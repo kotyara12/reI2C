@@ -166,22 +166,25 @@ bool readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
   i2c_cmd_handle_t cmd;
   // Send command(s)
   cmd = i2c_cmd_link_create();
-  i2c_master_start(cmd);
-  i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
-  i2c_master_write(cmd, cmds, cmds_size, ACK_CHECK_EN);
-  // If there is a pause for waiting for data, we immediately send commands and release the bus
-  if (wait_data > 0) {
-    i2c_master_stop(cmd);
-    err = i2c_master_cmd_begin(i2c_num, cmd, timeout / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (err != ESP_OK) {
-      rlog_e(i2cTAG, ERROR_I2C_REGISTER_WRITE, i2c_num, i2c_address, err, esp_err_to_name(err));
-      return false;
+  if (cmds) {
+    // Send commands
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
+    i2c_master_write(cmd, cmds, cmds_size, ACK_CHECK_EN);
+    // If there is a pause for waiting for data, we immediately send commands and release the bus
+    if (wait_data > 0) {
+      i2c_master_stop(cmd);
+      err = i2c_master_cmd_begin(i2c_num, cmd, timeout / portTICK_RATE_MS);
+      i2c_cmd_link_delete(cmd);
+      if (err != ESP_OK) {
+        rlog_e(i2cTAG, ERROR_I2C_REGISTER_WRITE, i2c_num, i2c_address, err, esp_err_to_name(err));
+        return false;
+      };
+      // We wait...
+      vTaskDelay(wait_data / portTICK_RATE_MS);
+      // Initializing a new batch of commands
+      cmd = i2c_cmd_link_create();
     };
-    // We wait...
-    vTaskDelay(wait_data / portTICK_RATE_MS);
-    // Initializing a new batch of commands
-    cmd = i2c_cmd_link_create();
   };
   // Reading data
   i2c_master_start(cmd);
