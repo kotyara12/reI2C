@@ -80,7 +80,7 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout);
  * @param cmds_size: Number of command bytes
  * @param data: Pointer to read data buffer
  * @param data_size: Data buffer size
- * @param wait_data: A pause between sending a command and receiving data with a bus free. If 0, then the bus is not released.
+ * @param wait_data_us: A pause between sending a command and receiving data with a bus free in µs. If 0, then the bus is not released.
  * @param @param timeout: Execution timeout
  * 
  * @return true - successful, false - failure
@@ -89,7 +89,7 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout);
 bool readI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
   uint8_t* cmds, const size_t cmds_size,
   uint8_t* data, const size_t data_size, 
-  const TickType_t wait_data, const TickType_t timeout);
+  const uint32_t wait_data_us, const TickType_t timeout);
 
 /**
  * @brief Send one or more bytes to the device

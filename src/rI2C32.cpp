@@ -158,7 +158,7 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout)
 bool readI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
   uint8_t* cmds, const size_t cmds_size,
   uint8_t* data, const size_t data_size, 
-  const TickType_t wait_data, const TickType_t timeout)
+  const uint32_t wait_data_us, const TickType_t timeout)
 {
   // Lock bus
   takeI2C(i2c_num);
@@ -172,7 +172,7 @@ bool readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
     i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
     i2c_master_write(cmd, cmds, cmds_size, ACK_CHECK_EN);
     // If there is a pause for waiting for data, we immediately send commands and release the bus
-    if (wait_data > 0) {
+    if (wait_data_us > 0) {
       i2c_master_stop(cmd);
       err = i2c_master_cmd_begin(i2c_num, cmd, timeout / portTICK_RATE_MS);
       i2c_cmd_link_delete(cmd);
@@ -181,7 +181,7 @@ bool readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
         return false;
       };
       // We wait...
-      vTaskDelay(wait_data / portTICK_RATE_MS);
+      ets_delay_us(wait_data_us);
       // Initializing a new batch of commands
       cmd = i2c_cmd_link_create();
     };
