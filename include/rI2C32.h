@@ -86,7 +86,7 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout);
  * @return esp error code
  * 
  * */
-readExI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
+esp_err_t readExI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
   uint8_t* cmds, const size_t cmds_size,
   uint8_t* data, const size_t data_size, 
   const uint32_t wait_data_us, const TickType_t timeout);

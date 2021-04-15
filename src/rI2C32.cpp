@@ -137,7 +137,7 @@ i2c_cmd_handle_t prepareI2C(const uint8_t i2c_address, const bool write)
 {
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();
   if (cmd) {
-    i2c_master_start(cmd)
+    i2c_master_start(cmd);
     if (write) {
       i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
     }
@@ -160,9 +160,9 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout)
 
 #define I2C_CHECK(err, message) \
   if ((err) != ESP_OK) { \
-    giveI2C(i2c_num); \
     rlog_e(i2cTAG, message, i2c_num, i2c_address, err, esp_err_to_name(err)); \
     if (cmdLink) i2c_cmd_link_delete(cmdLink); \
+    giveI2C(i2c_num); \
     return err; \
   };
 
@@ -173,7 +173,6 @@ esp_err_t readExI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
 {
   // Lock bus
   takeI2C(i2c_num);
-  esp_err_t err;
   i2c_cmd_handle_t cmdLink;
   // Send command(s)
   cmdLink = i2c_cmd_link_create();
@@ -208,6 +207,8 @@ esp_err_t readExI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
       return ESP_OK;
     };
   };
+  // Unlock bus
+  giveI2C(i2c_num);
   return ESP_FAIL;
 }
 
@@ -260,6 +261,8 @@ esp_err_t writeExI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
     giveI2C(i2c_num);
     return ESP_OK;
   };
+  // Unlock bus
+  giveI2C(i2c_num);
   return ESP_FAIL;
 }
 
