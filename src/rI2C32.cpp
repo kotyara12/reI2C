@@ -6,8 +6,9 @@
 static const char * i2cTAG  = "I2C";
 
 #define ERROR_I2C_CREATE_MUTEX    "Error creating I2C bus lock mutex!"
-#define ERROR_I2C_REGISTER_READ   "Error reading device on bus %d at address 0x%.2X: #%d %s!"
-#define ERROR_I2C_REGISTER_WRITE  "Error writing to device on bus %d at address 0x%.2X: #%d %s!"
+#define ERROR_I2C_PREPARE         "Error connect to device on bus %d at address 0x%.2X: #%d %s!"
+#define ERROR_I2C_READ            "Error reading device on bus %d at address 0x%.2X: #%d %s!"
+#define ERROR_I2C_WRITE           "Error writing to device on bus %d at address 0x%.2X: #%d %s!"
 
 xSemaphoreHandle lockI2C0, lockI2C1; 
 
@@ -135,12 +136,14 @@ void giveI2C(const i2c_port_t i2c_num)
 i2c_cmd_handle_t prepareI2C(const uint8_t i2c_address, const bool write)
 {
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-  i2c_master_start(cmd);
-  if (write) {
-    i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
-  }
-  else {
-    i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_READ, ACK_CHECK_EN);
+  if (cmd) {
+    i2c_master_start(cmd)
+    if (write) {
+      i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
+    }
+    else {
+      i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_READ, ACK_CHECK_EN);
+    };
   };
   return cmd;
 }
@@ -155,7 +158,15 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout)
   return err;
 }
 
-bool readI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
+#define I2C_CHECK(err, message) \
+  if ((err) != ESP_OK) { \
+    giveI2C(i2c_num); \
+    rlog_e(i2cTAG, message, i2c_num, i2c_address, err, esp_err_to_name(err)); \
+    if (cmdLink) i2c_cmd_link_delete(cmdLink); \
+    return err; \
+  };
+
+esp_err_t readExI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
   uint8_t* cmds, const size_t cmds_size,
   uint8_t* data, const size_t data_size, 
   const uint32_t wait_data_us, const TickType_t timeout)
@@ -163,42 +174,93 @@ bool readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
   // Lock bus
   takeI2C(i2c_num);
   esp_err_t err;
-  i2c_cmd_handle_t cmd;
+  i2c_cmd_handle_t cmdLink;
   // Send command(s)
-  cmd = i2c_cmd_link_create();
-  if (cmds) {
-    // Send commands
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
-    i2c_master_write(cmd, cmds, cmds_size, ACK_CHECK_EN);
-    // If there is a pause for waiting for data, we immediately send commands and release the bus
-    if (wait_data_us > 0) {
-      i2c_master_stop(cmd);
-      err = i2c_master_cmd_begin(i2c_num, cmd, timeout / portTICK_RATE_MS);
-      i2c_cmd_link_delete(cmd);
-      if (err != ESP_OK) {
-        rlog_e(i2cTAG, ERROR_I2C_REGISTER_WRITE, i2c_num, i2c_address, err, esp_err_to_name(err));
-        return false;
+  cmdLink = i2c_cmd_link_create();
+  if (cmdLink) {
+    // Send commands, if needed
+    if ((cmds) && (cmds_size > 0)) {
+      I2C_CHECK(i2c_master_start(cmdLink), ERROR_I2C_WRITE);
+      I2C_CHECK(i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN), ERROR_I2C_WRITE);
+      I2C_CHECK(i2c_master_write(cmdLink, cmds, cmds_size, ACK_CHECK_EN), ERROR_I2C_WRITE);
+      // If there is a pause for waiting for data, we immediately send commands and release the bus
+      if (wait_data_us > 0) {
+        I2C_CHECK(i2c_master_stop(cmdLink), ERROR_I2C_WRITE);
+        I2C_CHECK(i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS), ERROR_I2C_WRITE);
+        i2c_cmd_link_delete(cmdLink);
+        cmdLink = nullptr;
+        // We wait...
+        ets_delay_us(wait_data_us);
+        // Initializing a new batch of commands
+        cmdLink = i2c_cmd_link_create();
       };
-      // We wait...
-      ets_delay_us(wait_data_us);
-      // Initializing a new batch of commands
-      cmd = i2c_cmd_link_create();
+    };
+    // Reading data
+    if (cmdLink) {
+      I2C_CHECK(i2c_master_start(cmdLink), ERROR_I2C_READ);
+      I2C_CHECK(i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_READ, ACK_CHECK_EN), ERROR_I2C_READ);
+      I2C_CHECK(i2c_master_read(cmdLink, data, data_size, I2C_MASTER_LAST_NACK), ERROR_I2C_READ);
+      I2C_CHECK(i2c_master_stop(cmdLink), ERROR_I2C_READ);
+      I2C_CHECK(i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS), ERROR_I2C_READ);
+      i2c_cmd_link_delete(cmdLink);
+      // Unlock bus
+      giveI2C(i2c_num);
+      return ESP_OK;
     };
   };
-  // Reading data
-  i2c_master_start(cmd);
-  i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_READ, ACK_CHECK_EN);
-  i2c_master_read(cmd, data, data_size, I2C_MASTER_LAST_NACK);
-  i2c_master_stop(cmd);
-  err = i2c_master_cmd_begin(i2c_num, cmd, timeout / portTICK_RATE_MS);
-  i2c_cmd_link_delete(cmd);
-  // Unlock bus
-  giveI2C(i2c_num);
-  if (err != ESP_OK) {
-    rlog_e(i2cTAG, ERROR_I2C_REGISTER_READ, i2c_num, i2c_address, err, esp_err_to_name(err));
+  return ESP_FAIL;
+}
+
+bool readI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
+  uint8_t* cmds, const size_t cmds_size,
+  uint8_t* data, const size_t data_size, 
+  const uint32_t wait_data_us, const TickType_t timeout)
+{
+  return readExI2C(i2c_num, i2c_address, cmds, cmds_size, data, data_size, wait_data_us, timeout) == ESP_OK;
+}
+
+esp_err_t readI2C_CRC8(i2c_port_t i2c_num, const uint8_t i2c_address, 
+  uint8_t* cmds, const size_t cmds_size,
+  uint8_t* data, const size_t data_size, 
+  const uint32_t wait_data_us, const uint8_t crc_init, const TickType_t timeout)
+{
+  esp_err_t err = readExI2C(i2c_num, i2c_address, cmds, cmds_size, data, data_size, wait_data_us, timeout);
+  if (err == ESP_OK) {
+    // For each word (2 bytes) of data 1 byte CRC
+    if (data_size % 3 != 0) {
+      return ESP_ERR_INVALID_SIZE;
+    };
+    for (int i = 0; i < (data_size / 3); i++) {
+      if (CRC8(crc_init, data[i*3], data[i*3+1]) != data[i*3+2]) {
+        return ESP_ERR_INVALID_CRC;
+      };
+    };
   };
-  return err == ESP_OK;
+  return err;
+}
+
+esp_err_t writeExI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
+  uint8_t* cmds, const size_t cmds_size,
+  uint8_t* data, const size_t data_size, 
+  TickType_t timeout)
+{
+  takeI2C(i2c_num);
+  i2c_cmd_handle_t cmdLink = i2c_cmd_link_create();
+  if (cmdLink) {
+    I2C_CHECK(i2c_master_start(cmdLink), ERROR_I2C_WRITE);
+    I2C_CHECK(i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN), ERROR_I2C_WRITE);
+    I2C_CHECK(i2c_master_write(cmdLink, cmds, cmds_size, ACK_CHECK_EN), ERROR_I2C_WRITE);
+    if ((data) && (data_size>0)) {
+      I2C_CHECK(i2c_master_write(cmdLink, data, data_size, ACK_CHECK_EN), ERROR_I2C_WRITE);
+    };
+    I2C_CHECK(i2c_master_stop(cmdLink), ERROR_I2C_WRITE);
+    I2C_CHECK(i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS), ERROR_I2C_WRITE);
+    i2c_cmd_link_delete(cmdLink);
+    // Unlock bus
+    giveI2C(i2c_num);
+    return ESP_OK;
+  };
+  return ESP_FAIL;
 }
 
 bool writeI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
@@ -206,21 +268,5 @@ bool writeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
   uint8_t* data, const size_t data_size, 
   TickType_t timeout)
 {
-  takeI2C(i2c_num);
-  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-  i2c_master_start(cmd);
-  i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
-  i2c_master_write(cmd, cmds, cmds_size, ACK_CHECK_EN);
-  if (data) {
-    i2c_master_write(cmd, data, data_size, ACK_CHECK_EN);
-  };
-  i2c_master_stop(cmd);
-  esp_err_t err = i2c_master_cmd_begin(i2c_num, cmd, timeout / portTICK_RATE_MS);
-  i2c_cmd_link_delete(cmd);
-  giveI2C(i2c_num);
-  if (err != ESP_OK) {
-    rlog_e(i2cTAG, ERROR_I2C_REGISTER_WRITE, i2c_num, i2c_address, err, esp_err_to_name(err));
-  };
-  return err == ESP_OK;
+  return writeExI2C(i2c_num, i2c_address, cmds, cmds_size, data, data_size, timeout) == ESP_OK;
 }
-
