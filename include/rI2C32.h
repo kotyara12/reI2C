@@ -105,6 +105,7 @@ esp_err_t readExI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
  * @return true - successful, false - failure
  * 
  * */
+// [[deprecated]]
 bool readI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
   uint8_t* cmds, const size_t cmds_size,
   uint8_t* data, const size_t data_size, 
@@ -160,6 +161,7 @@ esp_err_t writeExI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
  * @return true - successful, false - failure
  * 
  * */
+// [[deprecated]]
 bool writeI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
   uint8_t* cmds, const size_t cmds_size,
   uint8_t* data, const size_t data_size, 
