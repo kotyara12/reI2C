@@ -10,7 +10,7 @@ static const char * i2cTAG  = "I2C";
 #define ERROR_I2C_READ            "Error reading device on bus %d at address 0x%.2X: #%d %s!"
 #define ERROR_I2C_WRITE           "Error writing to device on bus %d at address 0x%.2X: #%d %s!"
 
-xSemaphoreHandle lockI2C0, lockI2C1; 
+xSemaphoreHandle lockI2C[I2C_NUM_MAX];
 
 uint8_t calcCRC8(uint16_t data)
 {
@@ -44,21 +44,11 @@ uint8_t CRC8(uint8_t INIT, uint8_t MSB, uint8_t LSB)
 
 bool initI2C(const i2c_port_t i2c_num, const int sda_io_num, const int scl_io_num, const bool pullup_enable, const uint32_t clk_speed)
 {
-  if (i2c_num == 0) {
-    if (!lockI2C0) {
-      lockI2C0 = xSemaphoreCreateRecursiveMutex();
-      if (!lockI2C0) {
-        rlog_e(i2cTAG, ERROR_I2C_CREATE_MUTEX);
-        return false;
-      };
-    };
-  } else {
-    if (!lockI2C1) {
-      lockI2C1 = xSemaphoreCreateRecursiveMutex();
-      if (!lockI2C1) {
-        rlog_e(i2cTAG, ERROR_I2C_CREATE_MUTEX);
-        return false;
-      };
+  if (lockI2C[i2c_num]) {
+    lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutex();
+    if (!lockI2C[i2c_num]) {
+      rlog_e(i2cTAG, ERROR_I2C_CREATE_MUTEX);
+      return false;
     };
   };
 
@@ -90,47 +80,27 @@ bool initI2C(const i2c_port_t i2c_num, const int sda_io_num, const int scl_io_nu
 void doneI2C(const i2c_port_t i2c_num)
 {
   i2c_driver_delete(i2c_num); 
-  if (i2c_num == 0) {
-    if (lockI2C0) {
-      vSemaphoreDelete(lockI2C0);
-    };
-  } else {
-    if (lockI2C1) {
-      vSemaphoreDelete(lockI2C1);
-    };
+  if (lockI2C[i2c_num]) {
+    vSemaphoreDelete(lockI2C[i2c_num]);
+    lockI2C[i2c_num] = nullptr;
   };
 }
 
 void takeI2C(const i2c_port_t i2c_num)
 {
-  if (i2c_num == 0) {
-    if (!lockI2C0) {
-      lockI2C0 = xSemaphoreCreateRecursiveMutex();
-      if (!lockI2C0) {
-        rlog_e(i2cTAG, ERROR_I2C_CREATE_MUTEX);
-        return;
-      };
+  if (!lockI2C[i2c_num]) {
+    lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutex();
+    if (!lockI2C[i2c_num]) {
+      rlog_e(i2cTAG, ERROR_I2C_CREATE_MUTEX);
+      return;
     };
-    do {} while (xSemaphoreTakeRecursive(lockI2C0, portMAX_DELAY) != pdPASS);
-  } else {
-    if (!lockI2C1) {
-      lockI2C1 = xSemaphoreCreateRecursiveMutex();
-      if (!lockI2C1) {
-        rlog_e(i2cTAG, ERROR_I2C_CREATE_MUTEX);
-        return;
-      };
-    };
-    do {} while (xSemaphoreTakeRecursive(lockI2C1, portMAX_DELAY) != pdPASS);
   };
+  do {} while (xSemaphoreTakeRecursive(lockI2C[i2c_num], portMAX_DELAY) != pdPASS);
 }
 
 void giveI2C(const i2c_port_t i2c_num)
 {
-  if (i2c_num == 0) {
-    xSemaphoreGiveRecursive(lockI2C0);
-  } else {
-    xSemaphoreGiveRecursive(lockI2C1);
-  };
+  xSemaphoreGiveRecursive(lockI2C[i2c_num]);
 }
 
 i2c_cmd_handle_t prepareI2C(const uint8_t i2c_address, const bool write)
