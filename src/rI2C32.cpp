@@ -2,6 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h" 
 #include "rLog.h"
+#include "project_config.h"
 
 static const char * i2cTAG  = "I2C";
 
@@ -10,7 +11,20 @@ static const char * i2cTAG  = "I2C";
 #define ERROR_I2C_READ            "Error reading device on bus %d at address 0x%.2X: #%d %s!"
 #define ERROR_I2C_WRITE           "Error writing to device on bus %d at address 0x%.2X: #%d %s!"
 
-xSemaphoreHandle lockI2C[I2C_NUM_MAX];
+#ifdef CONFIG_I2C_LOCK
+  #define I2C_LOCK_ENABLED CONFIG_I2C_LOCK
+#else
+  #define I2C_LOCK_ENABLED 0
+#endif // CONFIG_I2C_LOCK
+
+#if I2C_LOCK_ENABLED
+  xSemaphoreHandle lockI2C[I2C_NUM_MAX];
+  #define takeI2C(i2c_num) do {} while (xSemaphoreTakeRecursive(lockI2C[(i2c_num)], portMAX_DELAY) != pdPASS)
+  #define giveI2C(i2c_num) xSemaphoreGiveRecursive(lockI2C[(i2c_num)])
+#else
+  #define takeI2C(i2c_num) {}
+  #define giveI2C(i2c_num) {}
+#endif // I2C_LOCK_ENABLED
 
 uint8_t calcCRC8(uint16_t data)
 {
@@ -44,13 +58,15 @@ uint8_t CRC8(uint8_t INIT, uint8_t MSB, uint8_t LSB)
 
 bool initI2C(const i2c_port_t i2c_num, const int sda_io_num, const int scl_io_num, const bool pullup_enable, const uint32_t clk_speed)
 {
-  if (lockI2C[i2c_num]) {
-    lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutex();
-    if (!lockI2C[i2c_num]) {
-      rlog_e(i2cTAG, ERROR_I2C_CREATE_MUTEX);
-      return false;
+  #if I2C_LOCK_ENABLED
+    if (lockI2C[i2c_num]) {
+      lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutex();
+      if (!lockI2C[i2c_num]) {
+        rlog_e(i2cTAG, ERROR_I2C_CREATE_MUTEX);
+        return false;
+      };
     };
-  };
+  #endif // I2C_LOCK_ENABLED
 
   i2c_config_t confI2C;
   confI2C.mode = I2C_MODE_MASTER;
@@ -80,27 +96,12 @@ bool initI2C(const i2c_port_t i2c_num, const int sda_io_num, const int scl_io_nu
 void doneI2C(const i2c_port_t i2c_num)
 {
   i2c_driver_delete(i2c_num); 
-  if (lockI2C[i2c_num]) {
-    vSemaphoreDelete(lockI2C[i2c_num]);
-    lockI2C[i2c_num] = nullptr;
-  };
-}
-
-void takeI2C(const i2c_port_t i2c_num)
-{
-  if (!lockI2C[i2c_num]) {
-    lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutex();
-    if (!lockI2C[i2c_num]) {
-      rlog_e(i2cTAG, ERROR_I2C_CREATE_MUTEX);
-      return;
+  #if I2C_LOCK_ENABLED
+    if (lockI2C[i2c_num]) {
+      vSemaphoreDelete(lockI2C[i2c_num]);
+      lockI2C[i2c_num] = nullptr;
     };
-  };
-  do {} while (xSemaphoreTakeRecursive(lockI2C[i2c_num], portMAX_DELAY) != pdPASS);
-}
-
-void giveI2C(const i2c_port_t i2c_num)
-{
-  xSemaphoreGiveRecursive(lockI2C[i2c_num]);
+  #endif // I2C_LOCK_ENABLED
 }
 
 i2c_cmd_handle_t prepareI2C(const uint8_t i2c_address, const bool write)
@@ -128,7 +129,7 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout)
   return err;
 }
 
-#define I2C_CHECK(err, message) \
+#define RI2C32_CHECK(err, message) \
   if ((err) != ESP_OK) { \
     rlog_e(i2cTAG, message, i2c_num, i2c_address, err, esp_err_to_name(err)); \
     if (cmdLink) i2c_cmd_link_delete(cmdLink); \
@@ -149,13 +150,13 @@ esp_err_t readExI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
   if (cmdLink) {
     // Send commands, if needed
     if ((cmds) && (cmds_size > 0)) {
-      I2C_CHECK(i2c_master_start(cmdLink), ERROR_I2C_WRITE);
-      I2C_CHECK(i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN), ERROR_I2C_WRITE);
-      I2C_CHECK(i2c_master_write(cmdLink, cmds, cmds_size, ACK_CHECK_EN), ERROR_I2C_WRITE);
+      RI2C32_CHECK(i2c_master_start(cmdLink), ERROR_I2C_WRITE);
+      RI2C32_CHECK(i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN), ERROR_I2C_WRITE);
+      RI2C32_CHECK(i2c_master_write(cmdLink, cmds, cmds_size, ACK_CHECK_EN), ERROR_I2C_WRITE);
       // If there is a pause for waiting for data, we immediately send commands and release the bus
       if (wait_data_us > 0) {
-        I2C_CHECK(i2c_master_stop(cmdLink), ERROR_I2C_WRITE);
-        I2C_CHECK(i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS), ERROR_I2C_WRITE);
+        RI2C32_CHECK(i2c_master_stop(cmdLink), ERROR_I2C_WRITE);
+        RI2C32_CHECK(i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS), ERROR_I2C_WRITE);
         i2c_cmd_link_delete(cmdLink);
         cmdLink = nullptr;
         // We wait...
@@ -166,11 +167,11 @@ esp_err_t readExI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
     };
     // Reading data
     if (cmdLink) {
-      I2C_CHECK(i2c_master_start(cmdLink), ERROR_I2C_READ);
-      I2C_CHECK(i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_READ, ACK_CHECK_EN), ERROR_I2C_READ);
-      I2C_CHECK(i2c_master_read(cmdLink, data, data_size, I2C_MASTER_LAST_NACK), ERROR_I2C_READ);
-      I2C_CHECK(i2c_master_stop(cmdLink), ERROR_I2C_READ);
-      I2C_CHECK(i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS), ERROR_I2C_READ);
+      RI2C32_CHECK(i2c_master_start(cmdLink), ERROR_I2C_READ);
+      RI2C32_CHECK(i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_READ, ACK_CHECK_EN), ERROR_I2C_READ);
+      RI2C32_CHECK(i2c_master_read(cmdLink, data, data_size, I2C_MASTER_LAST_NACK), ERROR_I2C_READ);
+      RI2C32_CHECK(i2c_master_stop(cmdLink), ERROR_I2C_READ);
+      RI2C32_CHECK(i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS), ERROR_I2C_READ);
       i2c_cmd_link_delete(cmdLink);
       // Unlock bus
       giveI2C(i2c_num);
@@ -218,14 +219,14 @@ esp_err_t writeExI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
   takeI2C(i2c_num);
   i2c_cmd_handle_t cmdLink = i2c_cmd_link_create();
   if (cmdLink) {
-    I2C_CHECK(i2c_master_start(cmdLink), ERROR_I2C_WRITE);
-    I2C_CHECK(i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN), ERROR_I2C_WRITE);
-    I2C_CHECK(i2c_master_write(cmdLink, cmds, cmds_size, ACK_CHECK_EN), ERROR_I2C_WRITE);
+    RI2C32_CHECK(i2c_master_start(cmdLink), ERROR_I2C_WRITE);
+    RI2C32_CHECK(i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN), ERROR_I2C_WRITE);
+    RI2C32_CHECK(i2c_master_write(cmdLink, cmds, cmds_size, ACK_CHECK_EN), ERROR_I2C_WRITE);
     if ((data) && (data_size>0)) {
-      I2C_CHECK(i2c_master_write(cmdLink, data, data_size, ACK_CHECK_EN), ERROR_I2C_WRITE);
+      RI2C32_CHECK(i2c_master_write(cmdLink, data, data_size, ACK_CHECK_EN), ERROR_I2C_WRITE);
     };
-    I2C_CHECK(i2c_master_stop(cmdLink), ERROR_I2C_WRITE);
-    I2C_CHECK(i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS), ERROR_I2C_WRITE);
+    RI2C32_CHECK(i2c_master_stop(cmdLink), ERROR_I2C_WRITE);
+    RI2C32_CHECK(i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS), ERROR_I2C_WRITE);
     i2c_cmd_link_delete(cmdLink);
     // Unlock bus
     giveI2C(i2c_num);
