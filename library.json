@@ -1,5 +1,5 @@
 {
-  "name": "rI2C32",
+  "name": "reI2C",
   "version": "2.0.0",
   "description": "Wrapping standard library i2c.h for ease of use",
   "keywords": "i2c",

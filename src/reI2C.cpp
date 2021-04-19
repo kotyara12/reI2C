@@ -1,7 +1,7 @@
-#include "rI2C32.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h" 
 #include "rLog.h"
+#include "reI2C.h"
 #include "project_config.h"
 
 static const char * i2cTAG  = "I2C";

@@ -6,8 +6,8 @@
    kotyara12@yandex.ru | https://kotyara12.ru | tg: @kotyara1971
 */
 
-#ifndef __RI2C32_H__
-#define __RI2C32_H__
+#ifndef __RE_I2C_H__
+#define __RE_I2C_H__
 
 #include <stddef.h>
 #include <stdint.h>
@@ -132,5 +132,5 @@ esp_err_t writeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
 }
 #endif
 
-#endif // __RI2C32_H__
+#endif // __RE_I2C_H__
 
