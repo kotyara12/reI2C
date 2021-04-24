@@ -129,6 +129,34 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout)
   return err;
 }
 
+esp_err_t generalCallResetI2C(i2c_port_t i2c_num) 
+{
+  // Lock bus
+  takeI2C(i2c_num);
+  esp_err_t error_code = ESP_ERR_NO_MEM;
+  i2c_cmd_handle_t cmdLink = nullptr;
+  cmdLink = i2c_cmd_link_create();
+  if (cmdLink) {
+    error_code = i2c_master_start(cmdLink);
+    if (error_code != ESP_OK) goto exit;
+    // Reset command using the general call address: 0x0006
+    error_code = i2c_master_write_byte(cmdLink, 0x00, ACK_CHECK_EN);
+    if (error_code != ESP_OK) goto exit;
+    error_code = i2c_master_write_byte(cmdLink, 0x06, ACK_CHECK_EN);
+    if (error_code != ESP_OK) goto exit;
+    // No stop bit
+    // error_code = i2c_master_stop(cmdLink);
+    // if (error_code != ESP_OK) goto exit;
+    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, 3000 / portTICK_RATE_MS);
+    if (error_code != ESP_OK) goto exit;
+  };
+  // Unlock bus and release resources
+exit:  
+  if (cmdLink) i2c_cmd_link_delete(cmdLink);
+  giveI2C(i2c_num);
+  return error_code;
+}
+
 esp_err_t readI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
   uint8_t* cmds, const size_t cmds_size,
   uint8_t* data, const size_t data_size, 

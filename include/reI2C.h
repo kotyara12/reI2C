@@ -73,6 +73,18 @@ i2c_cmd_handle_t prepareI2C(const uint8_t i2c_address, const bool write);
 esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout);
 
 /**
+ * @brief Reset through General Call
+ * All devices on the same I2C bus that support the general call mode will perform a reset. 
+ * Additionally, this command only works when the sensor is able to process I2C commands. 
+ * 
+ * @param i2c_num: Bus number (0 or 1)
+ * 
+ * @return Error code
+ * 
+ * */
+esp_err_t generalCallResetI2C(i2c_port_t i2c_num);
+
+/**
  * @brief Read one or more bytes from the device
  * 
  * @param i2c_num: Bus number (0 or 1)
