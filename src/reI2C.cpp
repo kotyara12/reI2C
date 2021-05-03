@@ -134,8 +134,7 @@ esp_err_t generalCallResetI2C(i2c_port_t i2c_num)
   // Lock bus
   takeI2C(i2c_num);
   esp_err_t error_code = ESP_ERR_NO_MEM;
-  i2c_cmd_handle_t cmdLink = nullptr;
-  cmdLink = i2c_cmd_link_create();
+  i2c_cmd_handle_t cmdLink = i2c_cmd_link_create();
   if (cmdLink) {
     error_code = i2c_master_start(cmdLink);
     if (error_code != ESP_OK) goto exit;
@@ -152,6 +151,50 @@ esp_err_t generalCallResetI2C(i2c_port_t i2c_num)
   };
   // Unlock bus and release resources
 exit:  
+  if (cmdLink) i2c_cmd_link_delete(cmdLink);
+  giveI2C(i2c_num);
+  return error_code;
+}
+
+void scanI2C(i2c_port_t i2c_num)
+{
+  esp_err_t error_code;
+  for (uint i = 1; i < 128; i++) {
+    i2c_cmd_handle_t cmdLink = i2c_cmd_link_create();
+    i2c_master_start(cmdLink);
+    i2c_master_write_byte(cmdLink, (i << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
+    i2c_master_stop(cmdLink);
+    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, 1000 / portTICK_RATE_MS);
+    i2c_cmd_link_delete(cmdLink);
+    if (error_code == ESP_OK) {
+      rlog_i(i2cTAG, "Found device on bus %d at address 0x%.2X", i2c_num, i);
+    };
+  }
+}
+
+esp_err_t wakeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
+  TickType_t timeout) 
+{
+  takeI2C(i2c_num);
+  esp_err_t error_code = ESP_ERR_NO_MEM;
+  i2c_cmd_handle_t cmdLink = i2c_cmd_link_create();
+  if (cmdLink) {
+    error_code = i2c_master_start(cmdLink);
+    if (error_code != ESP_OK) goto exit;
+    error_code = i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_WRITE, true);
+    if (error_code != ESP_OK) goto exit;
+    error_code = i2c_master_write_byte(cmdLink, 0x00, false);
+    if (error_code != ESP_OK) goto exit;
+    error_code = i2c_master_stop(cmdLink);
+    if (error_code != ESP_OK) goto exit;
+    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS);
+    if (error_code != ESP_OK) goto exit;
+  };
+// Unlock bus and release resources
+exit:  
+  if (error_code != ESP_OK) {
+    rlog_e(i2cTAG, ERROR_I2C_WRITE, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
+  };
   if (cmdLink) i2c_cmd_link_delete(cmdLink);
   giveI2C(i2c_num);
   return error_code;
@@ -214,7 +257,8 @@ esp_err_t readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
       // Execute packet
       error_code = i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS);
       if (error_code != ESP_OK) goto error_read;
-    };
+    }
+    else error_code = ESP_ERR_NO_MEM;
   };
 // Unlock bus and release resources
 exit:  

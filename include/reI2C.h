@@ -73,6 +73,14 @@ i2c_cmd_handle_t prepareI2C(const uint8_t i2c_address, const bool write);
 esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout);
 
 /**
+ * @brief Search for devices on the bus
+ * 
+ * @param i2c_num: Bus number (0 or 1)
+ * 
+ * */
+void scanI2C(i2c_port_t i2c_num);
+
+/**
  * @brief Reset through General Call
  * All devices on the same I2C bus that support the general call mode will perform a reset. 
  * Additionally, this command only works when the sensor is able to process I2C commands. 
@@ -85,9 +93,23 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout);
 esp_err_t generalCallResetI2C(i2c_port_t i2c_num);
 
 /**
+ * 
+ * @brief Wake up the device
+ * 
+ * @param i2c_num: Bus number (0 or 1)
+ * @param @param timeout: Execution timeout
+ *  
+ * @return esp error code
+ * 
+ * */
+esp_err_t wakeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
+  TickType_t timeout);
+
+/**
  * @brief Read one or more bytes from the device
  * 
  * @param i2c_num: Bus number (0 or 1)
+ * @param i2c_address: Device address (01 - 7F)
  * @param cmds: Pointer to the first byte of the command
  * @param cmds_size: Number of command bytes
  * @param data: Pointer to read data buffer
@@ -107,6 +129,7 @@ esp_err_t readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
  * @brief Read words (2 bytes each) from device with CRC check for each word
  * 
  * @param i2c_num: Bus number (0 or 1)
+ * @param i2c_address: Device address (01 - 7F)
  * @param cmds: Pointer to the first byte of the command
  * @param cmds_size: Number of command bytes
  * @param data: Pointer to read data buffer
@@ -126,6 +149,7 @@ esp_err_t readI2C_CRC8(i2c_port_t i2c_num, const uint8_t i2c_address,
  * @brief Send one or more bytes to the device
  * 
  * @param i2c_num: Bus number (0 or 1)
+ * @param i2c_address: Device address (01 - 7F)
  * @param cmds: Pointer to the first byte of the command
  * @param cmds_size: Number of command bytes
  * @param data: Pointer to send data buffer
