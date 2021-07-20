@@ -75,6 +75,7 @@ bool initI2C(const i2c_port_t i2c_num, const int sda_io_num, const int scl_io_nu
   confI2C.scl_io_num = scl_io_num;
   confI2C.scl_pullup_en = pullup_enable;
   confI2C.master.clk_speed = clk_speed;
+  confI2C.clk_flags = 0;
 
   esp_err_t err = i2c_param_config(i2c_num, &confI2C);
   if (err != ESP_OK) {
