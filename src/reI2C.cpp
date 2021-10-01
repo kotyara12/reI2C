@@ -4,7 +4,7 @@
 #include "reI2C.h"
 #include "project_config.h"
 
-static const char * i2cTAG  = "I2C";
+static const char * logTAG  = "I2C";
 
 #define ERROR_I2C_CREATE_MUTEX    "Error creating I2C bus lock mutex!"
 #define ERROR_I2C_PREPARE         "Error connect to device on bus %d at address 0x%.2X: #%d %s!"
@@ -62,7 +62,7 @@ bool initI2C(const i2c_port_t i2c_num, const int sda_io_num, const int scl_io_nu
     if (lockI2C[i2c_num]) {
       lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutex();
       if (!lockI2C[i2c_num]) {
-        rlog_e(i2cTAG, ERROR_I2C_CREATE_MUTEX);
+        rlog_e(logTAG, ERROR_I2C_CREATE_MUTEX);
         return false;
       };
     };
@@ -79,17 +79,17 @@ bool initI2C(const i2c_port_t i2c_num, const int sda_io_num, const int scl_io_nu
 
   esp_err_t err = i2c_param_config(i2c_num, &confI2C);
   if (err != ESP_OK) {
-    rlog_e(i2cTAG, "I2C bus setup error!");
+    rlog_e(logTAG, "I2C bus #%d setup error: #%d (%s)!", i2c_num, err, esp_err_to_name);
     return false;
   };
 
   err = i2c_driver_install(i2c_num, confI2C.mode, 0, 0, 0);
   if (err == ESP_OK) {
-    rlog_i(i2cTAG, "I2C bus #%d started successfully on GPIO SDA: %d, SCL: %d", i2c_num, sda_io_num, scl_io_num);
+    rlog_i(logTAG, "I2C bus #%d started successfully on GPIO SDA: %d, SCL: %d", i2c_num, sda_io_num, scl_io_num);
     return true;
   }
   else {
-    rlog_e(i2cTAG, "I2C bus initialization error!");
+    rlog_e(logTAG, "I2C bus #%d initialization error: #%d (%s)!", i2c_num, err, esp_err_to_name);
     return false;
   };
 }
@@ -168,7 +168,7 @@ void scanI2C(i2c_port_t i2c_num)
     error_code = i2c_master_cmd_begin(i2c_num, cmdLink, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmdLink);
     if (error_code == ESP_OK) {
-      rlog_i(i2cTAG, "Found device on bus %d at address 0x%.2X", i2c_num, i);
+      rlog_i(logTAG, "Found device on bus %d at address 0x%.2X", i2c_num, i);
     };
   }
 }
@@ -194,7 +194,7 @@ esp_err_t wakeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
 // Unlock bus and release resources
 exit:  
   if (error_code != ESP_OK) {
-    rlog_e(i2cTAG, ERROR_I2C_WRITE, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
+    rlog_e(logTAG, ERROR_I2C_WRITE, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
   };
   if (cmdLink) i2c_cmd_link_delete(cmdLink);
   giveI2C(i2c_num);
@@ -268,11 +268,11 @@ exit:
   return error_code;
 // Show write error log and exit
 error_write:
-  rlog_e(i2cTAG, ERROR_I2C_WRITE, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
+  rlog_e(logTAG, ERROR_I2C_WRITE, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
   goto exit;
 // Show read error log and exit
 error_read:
-  rlog_e(i2cTAG, ERROR_I2C_READ, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
+  rlog_e(logTAG, ERROR_I2C_READ, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
   goto exit;
 }
 
@@ -323,7 +323,7 @@ esp_err_t writeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
 // Unlock bus and release resources
 exit:  
   if (error_code != ESP_OK) {
-    rlog_e(i2cTAG, ERROR_I2C_WRITE, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
+    rlog_e(logTAG, ERROR_I2C_WRITE, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
   };
   if (cmdLink) i2c_cmd_link_delete(cmdLink);
   giveI2C(i2c_num);
