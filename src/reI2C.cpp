@@ -309,8 +309,10 @@ esp_err_t writeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
     if (error_code != ESP_OK) goto exit;
     error_code = i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
     if (error_code != ESP_OK) goto exit;
-    error_code = i2c_master_write(cmdLink, cmds, cmds_size, ACK_CHECK_EN);
-    if (error_code != ESP_OK) goto exit;
+    if ((cmds) && (cmds_size > 0)) {
+      error_code = i2c_master_write(cmdLink, cmds, cmds_size, ACK_CHECK_EN);
+      if (error_code != ESP_OK) goto exit;
+    };
     if ((data) && (data_size>0)) {
       error_code = i2c_master_write(cmdLink, data, data_size, ACK_CHECK_EN);
       if (error_code != ESP_OK) goto exit;
