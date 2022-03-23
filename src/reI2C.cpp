@@ -59,9 +59,9 @@ uint8_t CRC8(uint8_t INIT, uint8_t MSB, uint8_t LSB)
 bool initI2C(const i2c_port_t i2c_num, const int sda_io_num, const int scl_io_num, const bool pullup_enable, const uint32_t clk_speed)
 {
   #if I2C_LOCK_ENABLED
-    if (lockI2C[i2c_num]) {
+    if (lockI2C[i2c_num] == nullptr) {
       lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutex();
-      if (!lockI2C[i2c_num]) {
+      if (lockI2C[i2c_num] == nullptr) {
         rlog_e(logTAG, ERROR_I2C_CREATE_MUTEX);
         return false;
       };
@@ -98,7 +98,7 @@ void doneI2C(const i2c_port_t i2c_num)
 {
   i2c_driver_delete(i2c_num); 
   #if I2C_LOCK_ENABLED
-    if (lockI2C[i2c_num]) {
+    if (lockI2C[i2c_num] != nullptr) {
       vSemaphoreDelete(lockI2C[i2c_num]);
       lockI2C[i2c_num] = nullptr;
     };
