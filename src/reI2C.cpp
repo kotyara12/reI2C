@@ -159,6 +159,7 @@ exit:
 
 void scanI2C(i2c_port_t i2c_num)
 {
+  uint8_t cnt = 0;
   esp_err_t error_code;
   for (uint i = 1; i < 128; i++) {
     i2c_cmd_handle_t cmdLink = i2c_cmd_link_create();
@@ -168,9 +169,11 @@ void scanI2C(i2c_port_t i2c_num)
     error_code = i2c_master_cmd_begin(i2c_num, cmdLink, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmdLink);
     if (error_code == ESP_OK) {
+      cnt++;
       rlog_i(logTAG, "Found device on bus %d at address 0x%.2X", i2c_num, i);
     };
-  }
+  };
+  rlog_i(logTAG, "Found %d devices on bus %d", cnt, i2c_num);
 }
 
 esp_err_t wakeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
