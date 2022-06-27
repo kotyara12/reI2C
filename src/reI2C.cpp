@@ -172,6 +172,7 @@ void scanI2C(i2c_port_t i2c_num)
       cnt++;
       rlog_i(logTAG, "Found device on bus %d at address 0x%.2X", i2c_num, i);
     };
+    // vTaskDelay(1);
   };
   rlog_i(logTAG, "Found %d devices on bus %d", cnt, i2c_num);
 }
