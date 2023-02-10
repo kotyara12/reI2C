@@ -1,6 +1,6 @@
 {
   "name": "reI2C",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Wrapping standard library i2c.h for ease of use",
   "keywords": "i2c",
   "authors":

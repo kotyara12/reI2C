@@ -40,11 +40,9 @@ static const char * logTAG  = "I2C";
 // -------------------------------------- Static buffer allocation for command link --------------------------------------
 // -----------------------------------------------------------------------------------------------------------------------
 
-#define I2C_CMDLINK_BUFFER_SIZE I2C_LINK_RECOMMENDED_SIZE(2) 
-
-#if defined(CONFIG_I2C_PORT0_SDA) && defined(CONFIG_I2C_PORT0_STATIC) && (CONFIG_I2C_PORT0_STATIC == 1)
+#if defined(CONFIG_I2C_PORT0_SDA) && defined(CONFIG_I2C_PORT0_STATIC) && (CONFIG_I2C_PORT0_STATIC > 0)
   #define I2C0_USE_STATIC 1
-  static uint8_t _bufferI2C0[I2C_CMDLINK_BUFFER_SIZE] = { 0 };
+  static uint8_t _bufferI2C0[I2C_LINK_RECOMMENDED_SIZE(CONFIG_I2C_PORT0_STATIC)] = { 0 };
   #define __i2c0_cmd_link_create() i2c_cmd_link_create_static(_bufferI2C0, sizeof(_bufferI2C0))
   #define __i2c0_cmd_link_delete(cmd_handle) i2c_cmd_link_delete_static(cmd_handle)
 #else
@@ -53,9 +51,9 @@ static const char * logTAG  = "I2C";
   #define __i2c0_cmd_link_delete(cmd_handle) i2c_cmd_link_delete(cmd_handle)
 #endif // CONFIG_I2C_PORT0_STATIC
 
-#if defined(CONFIG_I2C_PORT1_SDA) && defined(CONFIG_I2C_PORT1_STATIC) && (CONFIG_I2C_PORT1_STATIC == 1)
+#if defined(CONFIG_I2C_PORT1_SDA) && defined(CONFIG_I2C_PORT1_STATIC) && (CONFIG_I2C_PORT1_STATIC > 0)
   #define I2C1_USE_STATIC 1
-  static uint8_t _bufferI2C1[I2C_CMDLINK_BUFFER_SIZE] = { 0 };
+  static uint8_t _bufferI2C1[I2C_LINK_RECOMMENDED_SIZE(CONFIG_I2C_PORT1_STATIC)] = { 0 };
   #define __i2c1_cmd_link_create() i2c_cmd_link_create_static(_bufferI2C1, sizeof(_bufferI2C1))
   #define __i2c1_cmd_link_delete(cmd_handle) i2c_cmd_link_delete_static(cmd_handle)
 #else
