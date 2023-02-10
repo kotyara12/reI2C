@@ -11,20 +11,65 @@ static const char * logTAG  = "I2C";
 #define ERROR_I2C_READ            "Error reading device on bus %d at address 0x%.2X: #%d %s!"
 #define ERROR_I2C_WRITE           "Error writing to device on bus %d at address 0x%.2X: #%d %s!"
 
+// -----------------------------------------------------------------------------------------------------------------------
+// ------------------------------------- Blocking access to I2C from different tasks -------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+
 #ifdef CONFIG_I2C_LOCK
+  #ifndef CONFIG_I2C_LOCK_STATIC
+    #define CONFIG_I2C_LOCK_STATIC 1
+  #endif
   #define I2C_LOCK_ENABLED CONFIG_I2C_LOCK
 #else
   #define I2C_LOCK_ENABLED 0
 #endif // CONFIG_I2C_LOCK
 
 #if I2C_LOCK_ENABLED
-  xSemaphoreHandle lockI2C[I2C_NUM_MAX];
-  #define takeI2C(i2c_num) do {} while (xSemaphoreTakeRecursive(lockI2C[(i2c_num)], portMAX_DELAY) != pdPASS)
-  #define giveI2C(i2c_num) xSemaphoreGiveRecursive(lockI2C[(i2c_num)])
+  xSemaphoreHandle _lockI2C[I2C_NUM_MAX];
+  #if CONFIG_I2C_LOCK_STATIC
+    StaticSemaphore_t _buffI2C[I2C_NUM_MAX];
+  #endif
+  #define takeI2C(i2c_num) do {} while (xSemaphoreTakeRecursive(_lockI2C[(i2c_num)], portMAX_DELAY) != pdPASS)
+  #define giveI2C(i2c_num) xSemaphoreGiveRecursive(_lockI2C[(i2c_num)])
 #else
   #define takeI2C(i2c_num) {}
   #define giveI2C(i2c_num) {}
 #endif // I2C_LOCK_ENABLED
+
+// -----------------------------------------------------------------------------------------------------------------------
+// -------------------------------------- Static buffer allocation for command link --------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+
+#define I2C_CMDLINK_BUFFER_SIZE I2C_LINK_RECOMMENDED_SIZE(2) 
+
+#if defined(CONFIG_I2C_PORT0_SDA) && defined(CONFIG_I2C_PORT0_STATIC) && (CONFIG_I2C_PORT0_STATIC == 1)
+  #define I2C0_USE_STATIC 1
+  static uint8_t _bufferI2C0[I2C_CMDLINK_BUFFER_SIZE] = { 0 };
+  #define __i2c0_cmd_link_create() i2c_cmd_link_create_static(_bufferI2C0, sizeof(_bufferI2C0))
+  #define __i2c0_cmd_link_delete(cmd_handle) i2c_cmd_link_delete_static(cmd_handle)
+#else
+  #define I2C0_USE_STATIC 0
+  #define __i2c0_cmd_link_create() i2c_cmd_link_create()
+  #define __i2c0_cmd_link_delete(cmd_handle) i2c_cmd_link_delete(cmd_handle)
+#endif // CONFIG_I2C_PORT0_STATIC
+
+#if defined(CONFIG_I2C_PORT1_SDA) && defined(CONFIG_I2C_PORT1_STATIC) && (CONFIG_I2C_PORT1_STATIC == 1)
+  #define I2C1_USE_STATIC 1
+  static uint8_t _bufferI2C1[I2C_CMDLINK_BUFFER_SIZE] = { 0 };
+  #define __i2c1_cmd_link_create() i2c_cmd_link_create_static(_bufferI2C1, sizeof(_bufferI2C1))
+  #define __i2c1_cmd_link_delete(cmd_handle) i2c_cmd_link_delete_static(cmd_handle)
+#else
+  #define I2C1_USE_STATIC 0
+  #define __i2c1_cmd_link_create() i2c_cmd_link_create()
+  #define __i2c1_cmd_link_delete(cmd_handle) i2c_cmd_link_delete(cmd_handle)
+#endif // CONFIG_I2C_PORT0_STATIC
+
+#define _i2c_cmd_link_create(i2c_num) (i2c_num == 0) ? __i2c0_cmd_link_create() : __i2c1_cmd_link_create()
+#define _i2c_cmd_link_delete(i2c_num, cmd_handle) (i2c_num == 0) ? __i2c0_cmd_link_delete(cmd_handle) : __i2c1_cmd_link_delete(cmd_handle)
+
+// -----------------------------------------------------------------------------------------------------------------------
+// -------------------------------------- Checksum calculation during transmission ---------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
 
 uint8_t calcCRC8(uint16_t data)
 {
@@ -56,18 +101,28 @@ uint8_t CRC8(uint8_t INIT, uint8_t MSB, uint8_t LSB)
 	return crc;
 }
 
+// -----------------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------- Initialize ------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+
 bool initI2C(const i2c_port_t i2c_num, const int sda_io_num, const int scl_io_num, const bool pullup_enable, const uint32_t clk_speed)
 {
+  // Create lock objects
   #if I2C_LOCK_ENABLED
-    if (lockI2C[i2c_num] == nullptr) {
-      lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutex();
-      if (lockI2C[i2c_num] == nullptr) {
+    if (_lockI2C[i2c_num] == nullptr) {
+      #if CONFIG_I2C_LOCK_STATIC
+        _lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutexStatic(_buffI2C[i2c_num]);
+      #else
+        _lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutex();
+      #endif
+      if (_lockI2C[i2c_num] == nullptr) {
         rlog_e(logTAG, ERROR_I2C_CREATE_MUTEX);
         return false;
       };
     };
   #endif // I2C_LOCK_ENABLED
 
+  // Config I2C bus
   i2c_config_t confI2C;
   confI2C.mode = I2C_MODE_MASTER;
   confI2C.sda_io_num = sda_io_num;
@@ -98,16 +153,20 @@ void doneI2C(const i2c_port_t i2c_num)
 {
   i2c_driver_delete(i2c_num); 
   #if I2C_LOCK_ENABLED
-    if (lockI2C[i2c_num] != nullptr) {
-      vSemaphoreDelete(lockI2C[i2c_num]);
-      lockI2C[i2c_num] = nullptr;
+    if (_lockI2C[i2c_num] != nullptr) {
+      vSemaphoreDelete(_lockI2C[i2c_num]);
+      _lockI2C[i2c_num] = nullptr;
     };
   #endif // I2C_LOCK_ENABLED
 }
 
-i2c_cmd_handle_t prepareI2C(const uint8_t i2c_address, const bool write)
+// -----------------------------------------------------------------------------------------------------------------------
+// --------------------------------------------------- Macro-wrappers ----------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
+
+i2c_cmd_handle_t prepareI2C(i2c_port_t i2c_num, const uint8_t i2c_address, const bool write)
 {
-  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_cmd_handle_t cmd = _i2c_cmd_link_create(i2c_num);
   if (cmd) {
     i2c_master_start(cmd);
     if (write) {
@@ -125,34 +184,40 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout)
   i2c_master_stop(cmd);
   takeI2C(i2c_num);
   esp_err_t err = i2c_master_cmd_begin(i2c_num, cmd, timeout / portTICK_RATE_MS);
-  i2c_cmd_link_delete(cmd);
+  _i2c_cmd_link_delete(i2c_num, cmd);
   giveI2C(i2c_num);
   return err;
 }
+
+// -----------------------------------------------------------------------------------------------------------------------
+// -------------------------------------------------- Service functions --------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
 
 esp_err_t generalCallResetI2C(i2c_port_t i2c_num) 
 {
   // Lock bus
   takeI2C(i2c_num);
   esp_err_t error_code = ESP_ERR_NO_MEM;
-  i2c_cmd_handle_t cmdLink = i2c_cmd_link_create();
+  // Create command link
+  i2c_cmd_handle_t cmdLink = _i2c_cmd_link_create(i2c_num);
   if (cmdLink) {
+    // Start bit
     error_code = i2c_master_start(cmdLink);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
     // Reset command using the general call address: 0x0006
     error_code = i2c_master_write_byte(cmdLink, 0x00, ACK_CHECK_EN);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
     error_code = i2c_master_write_byte(cmdLink, 0x06, ACK_CHECK_EN);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
     // No stop bit
     // error_code = i2c_master_stop(cmdLink);
-    // if (error_code != ESP_OK) goto exit;
+    // if (error_code != ESP_OK) goto end;
     error_code = i2c_master_cmd_begin(i2c_num, cmdLink, 3000 / portTICK_RATE_MS);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
   };
+end:  
   // Unlock bus and release resources
-exit:  
-  if (cmdLink) i2c_cmd_link_delete(cmdLink);
+  _i2c_cmd_link_delete(i2c_num, cmdLink);
   giveI2C(i2c_num);
   return error_code;
 }
@@ -162,12 +227,12 @@ void scanI2C(i2c_port_t i2c_num)
   uint8_t cnt = 0;
   esp_err_t error_code;
   for (uint i = 1; i < 128; i++) {
-    i2c_cmd_handle_t cmdLink = i2c_cmd_link_create();
+    i2c_cmd_handle_t cmdLink = _i2c_cmd_link_create(i2c_num);
     i2c_master_start(cmdLink);
     i2c_master_write_byte(cmdLink, (i << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
     i2c_master_stop(cmdLink);
     error_code = i2c_master_cmd_begin(i2c_num, cmdLink, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmdLink);
+    _i2c_cmd_link_delete(i2c_num, cmdLink);
     if (error_code == ESP_OK) {
       cnt++;
       rlog_i(logTAG, "Found device on bus %d at address 0x%.2X", i2c_num, i);
@@ -177,33 +242,36 @@ void scanI2C(i2c_port_t i2c_num)
   rlog_i(logTAG, "Found %d devices on bus %d", cnt, i2c_num);
 }
 
-esp_err_t wakeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
-  TickType_t timeout) 
+esp_err_t wakeI2C(i2c_port_t i2c_num, const uint8_t i2c_address, TickType_t timeout) 
 {
   takeI2C(i2c_num);
   esp_err_t error_code = ESP_ERR_NO_MEM;
-  i2c_cmd_handle_t cmdLink = i2c_cmd_link_create();
+  i2c_cmd_handle_t cmdLink = _i2c_cmd_link_create(i2c_num);
   if (cmdLink) {
     error_code = i2c_master_start(cmdLink);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
     error_code = i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_WRITE, true);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
     error_code = i2c_master_write_byte(cmdLink, 0x00, false);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
     error_code = i2c_master_stop(cmdLink);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
     error_code = i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
   };
-// Unlock bus and release resources
-exit:  
+end:  
+  // Unlock bus and release resources
   if (error_code != ESP_OK) {
     rlog_e(logTAG, ERROR_I2C_WRITE, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
   };
-  if (cmdLink) i2c_cmd_link_delete(cmdLink);
+  _i2c_cmd_link_delete(i2c_num, cmdLink);
   giveI2C(i2c_num);
   return error_code;
 }
+
+// -----------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------ Read and write macros ------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------
 
 esp_err_t readI2C(i2c_port_t i2c_num, const uint8_t i2c_address, 
   uint8_t* cmds, const size_t cmds_size,
@@ -214,8 +282,8 @@ esp_err_t readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
   takeI2C(i2c_num);
   esp_err_t error_code = ESP_ERR_NO_MEM;
   i2c_cmd_handle_t cmdLink = nullptr;
-  // Send command(s)
-  cmdLink = i2c_cmd_link_create();
+  // Create commands link
+  cmdLink = _i2c_cmd_link_create(i2c_num);
   if (cmdLink) {
     // Send commands, if needed
     if ((cmds) && (cmds_size > 0)) {
@@ -237,12 +305,12 @@ esp_err_t readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
         error_code = i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS);
         if (error_code != ESP_OK) goto error_write;
         // Release resources
-        i2c_cmd_link_delete(cmdLink);
+        _i2c_cmd_link_delete(i2c_num, cmdLink);
         cmdLink = nullptr;
-        // We wait...
+        // Wait...
         ets_delay_us(wait_data_us);
         // Initializing a new packet of commands
-        cmdLink = i2c_cmd_link_create();
+        cmdLink = _i2c_cmd_link_create(i2c_num);
       };
     };
     // Reading data
@@ -265,19 +333,19 @@ esp_err_t readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
     }
     else error_code = ESP_ERR_NO_MEM;
   };
-// Unlock bus and release resources
-exit:  
-  if (cmdLink) i2c_cmd_link_delete(cmdLink);
+end:  
+  // Unlock bus and release resources
+  _i2c_cmd_link_delete(i2c_num, cmdLink);
   giveI2C(i2c_num);
   return error_code;
 // Show write error log and exit
 error_write:
   rlog_e(logTAG, ERROR_I2C_WRITE, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
-  goto exit;
+  goto end;
 // Show read error log and exit
 error_read:
   rlog_e(logTAG, ERROR_I2C_READ, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
-  goto exit;
+  goto end;
 }
 
 esp_err_t readI2C_CRC8(i2c_port_t i2c_num, const uint8_t i2c_address, 
@@ -307,31 +375,31 @@ esp_err_t writeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
 {
   takeI2C(i2c_num);
   esp_err_t error_code = ESP_ERR_NO_MEM;
-  i2c_cmd_handle_t cmdLink = i2c_cmd_link_create();
+  i2c_cmd_handle_t cmdLink = _i2c_cmd_link_create(i2c_num);
   if (cmdLink) {
     error_code = i2c_master_start(cmdLink);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
     error_code = i2c_master_write_byte(cmdLink, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
     if ((cmds) && (cmds_size > 0)) {
       error_code = i2c_master_write(cmdLink, cmds, cmds_size, ACK_CHECK_EN);
-      if (error_code != ESP_OK) goto exit;
+      if (error_code != ESP_OK) goto end;
     };
     if ((data) && (data_size>0)) {
       error_code = i2c_master_write(cmdLink, data, data_size, ACK_CHECK_EN);
-      if (error_code != ESP_OK) goto exit;
+      if (error_code != ESP_OK) goto end;
     };
     error_code = i2c_master_stop(cmdLink);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
     error_code = i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS);
-    if (error_code != ESP_OK) goto exit;
+    if (error_code != ESP_OK) goto end;
   };
-// Unlock bus and release resources
-exit:  
+end:  
+  // Unlock bus and release resources
   if (error_code != ESP_OK) {
     rlog_e(logTAG, ERROR_I2C_WRITE, i2c_num, i2c_address, error_code, esp_err_to_name(error_code));
   };
-  if (cmdLink) i2c_cmd_link_delete(cmdLink);
+  _i2c_cmd_link_delete(i2c_num, cmdLink);
   giveI2C(i2c_num);
   return error_code;
 }

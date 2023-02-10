@@ -2,7 +2,7 @@
    EN: Wrapping standard library i2c.h for ease of use.
    RU: Обертка для i2c.h ESP32 для упрощения работы
    --------------------------
-   (с) 2021 Разживин Александр | Razzhivin Alexander
+   (с) 2021-2023 Разживин Александр | Razzhivin Alexander
    kotyara12@yandex.ru | https://kotyara12.ru | tg: @kotyara1971
 */
 
@@ -52,13 +52,14 @@ void doneI2C(const i2c_port_t i2c_num);
 /**
  * @brief Preparing the command chain
  * 
+ * @param i2c_num: Bus number (0 or 1)
  * @param i2c_address: Bus device address
  * @param write: Write mode (aka read mode)
  * 
  * @return Handle on a chain
  * 
  * */
-i2c_cmd_handle_t prepareI2C(const uint8_t i2c_address, const bool write);
+i2c_cmd_handle_t prepareI2C(i2c_port_t i2c_num, const uint8_t i2c_address, const bool write);
 
 /**
  * @brief Execute a previously started chain and release bus
