@@ -27,7 +27,7 @@ static const char * logTAG  = "I2C";
 #if I2C_LOCK_ENABLED
   xSemaphoreHandle _lockI2C[I2C_NUM_MAX];
   #if CONFIG_I2C_LOCK_STATIC
-    StaticSemaphore_t _buffI2C[I2C_NUM_MAX];
+    StaticSemaphore_t _buffMutexI2C[I2C_NUM_MAX];
   #endif
   #define takeI2C(i2c_num) do {} while (xSemaphoreTakeRecursive(_lockI2C[(i2c_num)], portMAX_DELAY) != pdPASS)
   #define giveI2C(i2c_num) xSemaphoreGiveRecursive(_lockI2C[(i2c_num)])
@@ -109,7 +109,7 @@ bool initI2C(const i2c_port_t i2c_num, const int sda_io_num, const int scl_io_nu
   #if I2C_LOCK_ENABLED
     if (_lockI2C[i2c_num] == nullptr) {
       #if CONFIG_I2C_LOCK_STATIC
-        _lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutexStatic(_buffI2C[i2c_num]);
+        _lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutexStatic(&_buffMutexI2C[i2c_num]);
       #else
         _lockI2C[i2c_num] = xSemaphoreCreateRecursiveMutex();
       #endif
