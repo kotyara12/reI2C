@@ -26,7 +26,7 @@ static const char * logTAG  = "I2C";
 #endif // CONFIG_I2C_LOCK
 
 #if I2C_LOCK_ENABLED
-  xSemaphoreHandle _lockI2C[I2C_NUM_MAX];
+  SemaphoreHandle_t _lockI2C[I2C_NUM_MAX];
   #if CONFIG_I2C_LOCK_STATIC
     StaticSemaphore_t _buffMutexI2C[I2C_NUM_MAX];
   #endif
