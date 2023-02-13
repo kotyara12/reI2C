@@ -1,5 +1,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h" 
+#include "rom/ets_sys.h"
 #include "rLog.h"
 #include "reI2C.h"
 #include "project_config.h"
@@ -181,7 +182,7 @@ esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout)
 {
   i2c_master_stop(cmd);
   takeI2C(i2c_num);
-  esp_err_t err = i2c_master_cmd_begin(i2c_num, cmd, timeout / portTICK_RATE_MS);
+  esp_err_t err = i2c_master_cmd_begin(i2c_num, cmd, pdMS_TO_TICKS(timeout));
   _i2c_cmd_link_delete(i2c_num, cmd);
   giveI2C(i2c_num);
   return err;
@@ -210,7 +211,7 @@ esp_err_t generalCallResetI2C(i2c_port_t i2c_num)
     // No stop bit
     // error_code = i2c_master_stop(cmdLink);
     // if (error_code != ESP_OK) goto end;
-    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, 3000 / portTICK_RATE_MS);
+    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, pdMS_TO_TICKS(3000));
     if (error_code != ESP_OK) goto end;
   };
 end:  
@@ -229,7 +230,7 @@ void scanI2C(i2c_port_t i2c_num)
     i2c_master_start(cmdLink);
     i2c_master_write_byte(cmdLink, (i << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
     i2c_master_stop(cmdLink);
-    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, 1000 / portTICK_RATE_MS);
+    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, pdMS_TO_TICKS(1000));
     _i2c_cmd_link_delete(i2c_num, cmdLink);
     if (error_code == ESP_OK) {
       cnt++;
@@ -254,7 +255,7 @@ esp_err_t wakeI2C(i2c_port_t i2c_num, const uint8_t i2c_address, TickType_t time
     if (error_code != ESP_OK) goto end;
     error_code = i2c_master_stop(cmdLink);
     if (error_code != ESP_OK) goto end;
-    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS);
+    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, pdMS_TO_TICKS(timeout));
     if (error_code != ESP_OK) goto end;
   };
 end:  
@@ -300,7 +301,7 @@ esp_err_t readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
         error_code = i2c_master_stop(cmdLink);
         if (error_code != ESP_OK) goto error_write;
         // Execute packet
-        error_code = i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS);
+        error_code = i2c_master_cmd_begin(i2c_num, cmdLink, pdMS_TO_TICKS(timeout));
         if (error_code != ESP_OK) goto error_write;
         // Release resources
         _i2c_cmd_link_delete(i2c_num, cmdLink);
@@ -326,7 +327,7 @@ esp_err_t readI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
       error_code = i2c_master_stop(cmdLink);
       if (error_code != ESP_OK) goto error_read;
       // Execute packet
-      error_code = i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS);
+      error_code = i2c_master_cmd_begin(i2c_num, cmdLink, pdMS_TO_TICKS(timeout));
       if (error_code != ESP_OK) goto error_read;
     }
     else error_code = ESP_ERR_NO_MEM;
@@ -389,7 +390,7 @@ esp_err_t writeI2C(i2c_port_t i2c_num, const uint8_t i2c_address,
     };
     error_code = i2c_master_stop(cmdLink);
     if (error_code != ESP_OK) goto end;
-    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, timeout / portTICK_RATE_MS);
+    error_code = i2c_master_cmd_begin(i2c_num, cmdLink, pdMS_TO_TICKS(timeout));
     if (error_code != ESP_OK) goto end;
   };
 end:  
