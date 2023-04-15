@@ -167,24 +167,26 @@ i2c_cmd_handle_t prepareI2C(i2c_port_t i2c_num, const uint8_t i2c_address, const
 {
   i2c_cmd_handle_t cmd = _i2c_cmd_link_create(i2c_num);
   if (cmd) {
-    i2c_master_start(cmd);
-    if (write) {
-      i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
-    }
-    else {
-      i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_READ, ACK_CHECK_EN);
-    };
+    esp_err_t err = i2c_master_start(cmd);
+    if (err != ESP_OK) goto error;
+    err = i2c_master_write_byte(cmd, (i2c_address << 1) | (write ? I2C_MASTER_WRITE : I2C_MASTER_READ), ACK_CHECK_EN);
+    if (err != ESP_OK) goto error;
   };
   return cmd;
+error:
+  _i2c_cmd_link_delete(i2c_num, cmd);
+  return nullptr;
 }
 
 esp_err_t execI2C(i2c_port_t i2c_num, i2c_cmd_handle_t cmd, TickType_t timeout)
 {
-  i2c_master_stop(cmd);
-  takeI2C(i2c_num);
-  esp_err_t err = i2c_master_cmd_begin(i2c_num, cmd, pdMS_TO_TICKS(timeout));
-  _i2c_cmd_link_delete(i2c_num, cmd);
-  giveI2C(i2c_num);
+  esp_err_t err = i2c_master_stop(cmd);
+  if (err == ESP_OK) {
+    takeI2C(i2c_num);
+    err = i2c_master_cmd_begin(i2c_num, cmd, pdMS_TO_TICKS(timeout));
+    _i2c_cmd_link_delete(i2c_num, cmd);
+    giveI2C(i2c_num);
+  };
   return err;
 }
 
