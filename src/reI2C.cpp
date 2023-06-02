@@ -5,7 +5,9 @@
 #include "reI2C.h"
 #include "project_config.h"
 
+#if CONFIG_RLOG_PROJECT_LEVEL > RLOG_LEVEL_NONE
 static const char * logTAG  = "I2C";
+#endif // CONFIG_RLOG_PROJECT_LEVEL
 
 #define ERROR_I2C_CREATE_MUTEX    "Error creating I2C bus lock mutex!"
 #define ERROR_I2C_PREPARE         "Error connect to device on bus %d at address 0x%.2X: #%d %s!"
