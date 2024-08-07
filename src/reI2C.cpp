@@ -229,7 +229,7 @@ void scanI2C(i2c_port_t i2c_num)
 {
   uint8_t cnt = 0;
   esp_err_t error_code;
-  for (uint i = 1; i < 128; i++) {
+  for (uint8_t i = 1; i < 128; i++) {
     i2c_cmd_handle_t cmdLink = _i2c_cmd_link_create(i2c_num);
     i2c_master_start(cmdLink);
     i2c_master_write_byte(cmdLink, (i << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
